@@ -26,7 +26,6 @@ void _print_header(std::string file_path)
 		std::println("Error opening file");
 		return;
 	}
-	
 	std::string line;
 	while (std::getline(file_reader_stream, line))
 	{
@@ -41,10 +40,11 @@ void _print_header(std::string file_path)
 */
 int main()
 {
-	//TODO implement barebones shell interface that prints out title and ascii art https://cppreference.com/cpp/numeric/random
-	//TODO for now just hardcode the headers into the program but for later use an install script or something else with a fixed path
-	std::println("{}", headers[0]);
-	std::println("{}", art[0]);
-	std::print("> ");
+	std::random_device seed;
+	std::mt19937 random_engine(seed());
+	std::uniform_int_distribution<> prng(0, 4);
+	std::println("{}", headers[prng(random_engine)]);
+	std::println("{}", art[prng(random_engine)]);
+	std::println("> ");
 	return 0; //todo figure out error handling mechanism (status codes, std::expected or try catches) https://www.youtube.com/watch?v=Vz40rDiWnN8
 }
