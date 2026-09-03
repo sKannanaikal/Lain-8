@@ -4,7 +4,8 @@ project(Lain-8)
 # Setting up Directory and Compiler Settings
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "bin")
 set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_COMPILER "/usr/bin/g++")
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Loading in external Libraries
 include(FetchContent)
