@@ -45,6 +45,5 @@ int main()
 	std::uniform_int_distribution<> prng(0, 4);
 	std::println("{}", headers[prng(random_engine)]);
 	std::println("{}", art[prng(random_engine)]);
-	std::print("> ");
 	return 0; //todo figure out error handling mechanism (status codes, std::expected or try catches) https://www.youtube.com/watch?v=Vz40rDiWnN8
 }
