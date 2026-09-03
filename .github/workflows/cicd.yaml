@@ -1,0 +1,48 @@
+name: Lain-8 CICD Pipeline w/ CMake
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  Validate Project Can Build and Run:
+    runs-on: ubuntu-latest
+    steps: 
+      - name: Clone Lain-8 Repo
+        uses: actions/checkout@v4
+
+      - name: Setting up Build Directory
+        run: mkdir build
+
+      - name: Generate Makefile
+        run: cmake -B ./build
+
+      - name: Building Emulator
+        run: cmake --build ./build/
+
+      - name: Run Emulator
+        run: ./build/bin/lain-8
+
+     - name: Cleaning up
+        run: cd ./build && make clean
+
+  Build and Run Unit Tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone Lain-8 Repo
+        uses: actions/checkout@v4
+
+      - name: Setting up Build Directory
+        run: mkdir ./build
+
+      - name: Generating Makefile
+        run: cmake -B ./build
+
+      - name: Build Out Unit Test Binary
+        run: cmake --build ./build
+
+      - name: Run Test Binary
+        run: ./build/lain8-tester
+
+      - name: Cleaning up
+        run: cd ./build && make clean 
