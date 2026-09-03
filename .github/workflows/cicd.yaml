@@ -2,13 +2,12 @@ name: Lain-8 CICD Pipeline w/ CMake
 
 on:
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   build_and_run:
-
     runs-on: ubuntu-latest
-
     steps: 
       - name: Clone Lain-8 Repo
         uses: actions/checkout@v4
@@ -26,12 +25,10 @@ jobs:
         run: ./build/bin/lain-8
 
       - name: Cleaning up
-        run: cd ./build && make clean
+        run: cmake --build ./build --target clean
 
   unit_tests:
-
     runs-on: ubuntu-latest
-
     steps:
       - name: Clone Lain-8 Repo
         uses: actions/checkout@v4
@@ -49,4 +46,4 @@ jobs:
         run: ./build/lain8-tester
 
       - name: Cleaning up
-        run: cd ./build && make clean 
+        run: cmake --build ./build --target clean 
