@@ -6,7 +6,9 @@ on:
 
 jobs:
   build_and_run:
+
     runs-on: ubuntu-latest
+
     steps: 
       - name: Clone Lain-8 Repo
         uses: actions/checkout@v4
@@ -23,11 +25,13 @@ jobs:
       - name: Run Emulator
         run: ./build/bin/lain-8
 
-     - name: Cleaning up
+      - name: Cleaning up
         run: cd ./build && make clean
 
   unit_tests:
+
     runs-on: ubuntu-latest
+
     steps:
       - name: Clone Lain-8 Repo
         uses: actions/checkout@v4
