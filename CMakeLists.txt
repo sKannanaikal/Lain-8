@@ -17,11 +17,11 @@ FetchContent_MakeAvailable(googletest)
 enable_testing()
 
 # Building out Local Libraries
-add_subdirectory(src/general)
+add_subdirectory(src/core)
 
 # Building out main emulator application
 add_executable(lain8 src/main.cpp)
-target_link_libraries(lain8 general_lib)
+target_link_libraries(lain8 core_lib)
 
 # Building out tester binary for unit tests
 add_executable(lain8-tester test/main.cpp)
