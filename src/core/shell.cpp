@@ -1,6 +1,9 @@
+
+#include <fstream>
 #include <iostream>
 #include <print>
 #include <string>
+#include <string_view>
 
 #include "shell.hpp"
 
@@ -40,6 +43,30 @@ static inline LainCommand _stringToLainCommand(const std::string& input)
 	return LainCommand::UNKNOWN;
 }
 
+static inline void _hexdump(std::uint8_t buffer[], std::string_view title, int buffer_size)
+{
+	std::println("======== {} ========", title);
+	for (int i = 0; i < buffer_size; i++)
+	{
+		if (!(i % 16))
+			std::print("{:08X} ", i);
+
+      		std::print("{:02X} ", buffer[i]);
+
+		if (i % 16 == 15)
+		{
+			for (int j = (i - 15); j < i; j++)
+			{
+				if (buffer[j] >= 0x20 && buffer[j] <= 0x7E)
+					std::print("{:c}", buffer[j]);
+				else
+					std::print(".");
+			}
+      			std::println();
+		}
+	}
+}
+
 static inline void _executeLoad()
 {
 	std::string filepath = "";
@@ -47,6 +74,17 @@ static inline void _executeLoad()
 	std::getline(std::cin, filepath);
 
 	//TODO verify program exists IFF then load into Chip8 system memory
+	std::ifstream fileReaderStream(filepath, std::ios::binary);
+	if (!fileReaderStream.is_open())
+		std::println("Failed to open {}", filepath);
+	else
+	{
+		//this is the max allowed size for a program in CHIP-8
+		std::uint8_t program_bytes[3584] = {0};
+		fileReaderStream.read(reinterpret_cast<char *>(program_bytes), 3584);
+		_hexdump(program_bytes, "Program Bytes", 3584);
+		//TODO create an emulator object and then call execute program
+	}
 	return;
 }
 
@@ -69,6 +107,7 @@ static inline void _executeQuit(bool& should_quit)
 {
 	should_quit = true;
 }
+
 void execute_lain_shell()
 {
 	std::string input_command = "";
