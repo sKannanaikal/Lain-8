@@ -25,7 +25,6 @@ public:
 private:
 	void fetch_instr();
 	void decode_and_execute_instr();
-
 };
 
 }
