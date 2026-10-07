@@ -1,6 +1,8 @@
+#include <algorithm>
 #include <cstdint>
-
+#include <cstring>
 #include "emulator.hpp" // TODO update this to use <emulator.hpp> instead
+#include "../graphics/screen.hpp"
 
 namespace Lain8
 {
@@ -19,8 +21,11 @@ Emulator::Emulator()
 
 void Emulator::load_program(std::uint8_t program_bytes [])
 {
-	memcpy(memory[0x200], program_bytes, 3584);
+	//get the proper size of a program and pass it in here
+	std::copy(&program_bytes[0], &program_bytes[3584], &this->memory[0x200]);
 	this->program_counter = 0x200;
+	Graphics::Screen display;
+	display.turn_on();
 }
 
 void Emulator::execute_program()
@@ -41,6 +46,8 @@ void Emulator::fetch_instr()
 
 void Emulator::decode_and_execute_instr(std::uint16_t instruction)
 {
+	return;
 	//core function going to be a switch statement primarily which will call different functio
 }
+
 }

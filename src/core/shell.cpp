@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include "shell.hpp"
+#include "emulator.hpp"
 
 namespace Lain8
 {	
@@ -84,6 +85,8 @@ static inline void _executeLoad()
 		fileReaderStream.read(reinterpret_cast<char *>(program_bytes), 3584);
 		_hexdump(program_bytes, "Program Bytes", 3584);
 		//TODO create an emulator object and then call execute program
+		Emulator emulator;
+		emulator.load_program(program_bytes);
 	}
 	return;
 }

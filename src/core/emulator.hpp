@@ -18,13 +18,14 @@ public:
 	std::uint16_t program_counter;
 	std::uint8_t stack_pointer;
 	std::uint16_t stack[16];
-
+	
+	Emulator();
 	void load_program(std::uint8_t program_bytes[]);
 	void execute_program();
 
 private:
 	void fetch_instr();
-	void decode_and_execute_instr();
+	void decode_and_execute_instr(std::uint16_t instruction);
 };
 
 }
