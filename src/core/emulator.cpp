@@ -1,6 +1,8 @@
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <thread>
 #include "emulator.hpp" // TODO update this to use <emulator.hpp> instead
 #include "../graphics/screen.hpp"
 
@@ -17,6 +19,7 @@ Emulator::Emulator()
 	std::uint16_t program_counter = 0;
 	std::uint8_t stack_pointer = 0;
 	std::uint16_t stack[16] = {0};
+	std::uint8_t screen_buffer[2048] = {0};
 }
 
 void Emulator::load_program(std::uint8_t program_bytes [])
@@ -26,6 +29,11 @@ void Emulator::load_program(std::uint8_t program_bytes [])
 	this->program_counter = 0x200;
 	Graphics::Screen display;
 	display.turn_on();
+	{
+		using namespace std::chrono_literals;
+		std::this_thread::sleep_for(10s);
+	}
+	display.turn_off();
 }
 
 void Emulator::execute_program()

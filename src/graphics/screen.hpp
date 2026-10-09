@@ -9,8 +9,11 @@ namespace Lain8::Graphics {
 class Screen {
 
 public:
+	GLFWwindow *window;
 	Screen();
 	void turn_on();
+	void render(std::uint8_t screen_buffer []);
+	void turn_off();
 };
 
 }
