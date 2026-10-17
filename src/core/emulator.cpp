@@ -2,9 +2,11 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <print>
 #include <thread>
 #include "emulator.hpp" // TODO update this to use <emulator.hpp> instead
-#include "../graphics/screen.hpp"
+#include <SDL3/SDL.h>
+#include "screen.hpp"
 
 namespace Lain8
 {
@@ -19,7 +21,7 @@ Emulator::Emulator()
 	std::uint16_t program_counter = 0;
 	std::uint8_t stack_pointer = 0;
 	std::uint16_t stack[16] = {0};
-	std::uint8_t screen_buffer[2048] = {0};
+	std::uint32_t screen_buffer[2048] = {0xFFFFFFFF};
 }
 
 void Emulator::load_program(std::uint8_t program_bytes [])
@@ -27,13 +29,7 @@ void Emulator::load_program(std::uint8_t program_bytes [])
 	//get the proper size of a program and pass it in here
 	std::copy(&program_bytes[0], &program_bytes[3584], &this->memory[0x200]);
 	this->program_counter = 0x200;
-	Graphics::Screen display;
-	display.turn_on();
-	{
-		using namespace std::chrono_literals;
-		std::this_thread::sleep_for(10s);
-	}
-	display.turn_off();
+	Screen mScreen {};
 }
 
 void Emulator::execute_program()

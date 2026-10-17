@@ -17,19 +17,15 @@ FetchContent_MakeAvailable(googletest)
 enable_testing()
 
 # Building out External Libraries
-add_subdirectory(external/glfw)
-add_library(glad STATIC external/glad/src/glad.c)
-target_include_directories(glad PUBLIC external/glad/include)
+add_subdirectory(external/SDL EXCLUDE_FROM_ALL)
 
 # Building out Local Libraries
 add_subdirectory(src/core)
-add_subdirectory(src/graphics)
-target_link_libraries(graphics_lib PUBLIC glad)
-target_link_libraries(core_lib PRIVATE graphics_lib) #remove this in final build no dependcey needed
+target_link_libraries(core_lib SDL3::SDL3)
+
 # Building out main emulator application
 add_executable(lain8 src/main.cpp)
-
-target_link_libraries(lain8 PRIVATE core_lib graphics_lib glfw)
+target_link_libraries(lain8 PRIVATE core_lib)
 
 # Building out tester binary for unit tests
 add_executable(lain8-tester test/main.cpp)
