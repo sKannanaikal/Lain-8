@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <print>
+#include <random>
 #include <thread>
 
 namespace Lain8 {
@@ -62,6 +63,41 @@ void Emulator::jump(std::uint16_t jmp_address) {
   this->program_counter = jmp_address;
 }
 
+void Emulator::call(std::uint16_t fun_address) {
+  this->stack[this->stack_pointer] = this->program_counter;
+  this->stack_pointer += 1;
+  this->program_counter = fun_address;
+}
+
+void Emulator::ret_from_func() {
+  this->program_counter = this->stack[this->stack_pointer];
+  this->stack_pointer -= 1;
+}
+
+void Emulator::skip_neq_reg(std::uint8_t first_register_num,
+                            std::uint8_t second_register_num) {
+  if (this->registers[first_register_num] !=
+      this->registers[second_register_num])
+    this->program_counter += 2;
+}
+
+void Emulator::skip_eq_reg(std::uint8_t first_register_num,
+                           std::uint8_t second_register_num) {
+  if (this->registers[first_register_num] ==
+      this->registers[second_register_num])
+    this->program_counter += 2;
+}
+
+void Emulator::skip_neq_val(std::uint8_t register_num, std::uint8_t cmp_value) {
+  if (this->registers[register_num] != cmp_value)
+    this->program_counter += 2;
+}
+
+void Emulator::skip_eq_val(std::uint8_t register_num, std::uint8_t cmp_value) {
+  if (this->registers[register_num] == cmp_value)
+    this->program_counter += 2;
+}
+
 void Emulator::set_register_value(std::uint8_t register_num,
                                   std::uint8_t register_value) {
 
@@ -85,9 +121,110 @@ void Emulator::set_index_register(std::uint16_t register_value) {
   this->i_register = register_value;
 }
 
+void Emulator::set_from_register_value(std::uint8_t dst, std::uint8_t src) {
+  this->registers[dst] = this->registers[src];
+}
+
+void Emulator::binary_or(std::uint8_t first_reg, std::uint8_t second_reg) {
+  this->registers[first_reg] =
+      this->registers[first_reg] | this->registers[second_reg];
+}
+void Emulator::binary_and(std::uint8_t first_reg, std::uint8_t second_reg) {
+  this->registers[first_reg] =
+      this->registers[first_reg] & this->registers[second_reg];
+}
+void Emulator::logical_xor(std::uint8_t first_reg, std::uint8_t second_reg) {
+  this->registers[first_reg] =
+      this->registers[first_reg] ^ this->registers[second_reg];
+}
+void Emulator::add_registers(std::uint8_t first_reg, std::uint8_t second_reg) {
+  if (0xFF - this->registers[first_reg] <= this->registers[second_reg]) {
+    this->registers[0xF] = 1;
+  } else {
+    this->registers[0xF] = 0;
+  }
+  this->registers[first_reg] =
+      this->registers[first_reg] + this->registers[second_reg];
+}
+void Emulator::sub_registers(std::uint8_t first_reg, std::uint8_t second_reg) {
+  if (this->registers[first_reg] >= this->registers[second_reg]) {
+    this->registers[0xF] = 1;
+  } else {
+    this->registers[0xF] = 0;
+  }
+
+  this->registers[first_reg] =
+      this->registers[first_reg] - this->registers[second_reg];
+}
+void Emulator::sub_registers_reverse(std::uint8_t first_reg,
+                                     std::uint8_t second_reg) {
+  if (this->registers[second_reg] >= this->registers[first_reg]) {
+    this->registers[0xF] = 1;
+  } else {
+    this->registers[0xF] = 0;
+  }
+
+  this->registers[first_reg] =
+      this->registers[second_reg] - this->registers[first_reg];
+}
+
+// configurable
+void Emulator::shift_right(std::uint8_t first_reg, std::uint8_t second_reg) {
+  this->registers[first_reg] = this->registers[second_reg]; // configurable
+  this->registers[first_reg] = this->registers[first_reg] >> 1;
+}
+
+// configurable command
+void Emulator::shift_left(std::uint8_t first_reg, std::uint8_t second_reg) {
+  this->registers[first_reg] = this->registers[second_reg]; // configurable
+  this->registers[first_reg] = this->registers[first_reg] << 1;
+}
+
+// configurable command
+void Emulator::jump_with_offset(std::uint16_t address) {
+  this->program_counter = this->registers[0] + address;
+}
 void Emulator::clear_screen() {
   std::fill_n(this->screen_buffer, 2048, 0x00000000);
   mScreen.render(this->screen_buffer);
+}
+
+void Emulator::gen_random_num(std::uint8_t result_reg_num, std::uint8_t value) {
+  std::random_device seed;
+  std::mt19937 engine(seed());
+
+  std::uniform_int_distribution<> rng(0, 255);
+  int random_num = rng(engine);
+
+  this->registers[result_reg_num] = random_num & value;
+}
+
+void Emulator::set_register_to_timer_value(std::uint8_t register_num) {
+  this->registers[register_num] = this->delay_timer;
+}
+
+void Emulator::set_delay_timer(std::uint8_t register_num) {
+  this->delay_timer = this->registers[register_num];
+}
+
+void Emulator::set_sound_timer(std::uint8_t register_num) {
+  this->sound_timer = this->registers[register_num];
+}
+
+void Emulator::add_to_index(std::uint8_t register_num) {
+  this->i_register += this->registers[register_num];
+}
+
+void Emulator::store_registers_in_memory(std::uint8_t max_register_num) {
+  for (int i = 0; i <= max_register_num; i++) {
+    this->memory[this->i_register + i] = this->registers[i];
+  }
+}
+
+void Emulator::grab_registers_from_memory(std::uint8_t max_register_num) {
+  for (int i = 0; i <= max_register_num; i++) {
+    this->registers[i] = this->memory[this->i_register + i];
+  }
 }
 
 void Emulator::draw(std::uint8_t x_register, std::uint8_t y_register,
@@ -136,7 +273,11 @@ void Emulator::decode_and_execute_instr(std::uint16_t instruction) {
                instruction, instruction_type);
   switch (instruction_type) {
   case 0x0: {
-    clear_screen();
+    if (instruction == 0x00E0) {
+      clear_screen();
+    } else if (instruction == 0x00EE) {
+      ret_from_func();
+    }
     break;
   }
   case 0x1: {
@@ -145,15 +286,26 @@ void Emulator::decode_and_execute_instr(std::uint16_t instruction) {
     break;
   }
   case 0x2: {
+    std::uint16_t fun_address = 0x0FFF & instruction;
+    call(fun_address);
     break;
   }
   case 0x3: {
+    std::uint8_t register_num = (instruction & 0x0F00) >> 8;
+    std::uint8_t value = (instruction & 0x00FF);
+    skip_eq_val(register_num, value);
     break;
   }
   case 0x4: {
+    std::uint8_t register_num = (instruction & 0x0F00) >> 8;
+    std::uint8_t value = (instruction & 0x00FF);
+    skip_neq_val(register_num, value);
     break;
   }
   case 0x5: {
+    std::uint8_t first_register_num = (instruction & 0x0F00) >> 8;
+    std::uint8_t second_register_num = (instruction & 0x00F0) >> 4;
+    skip_eq_reg(first_register_num, second_register_num);
     break;
   }
   case 0x6: {
@@ -169,9 +321,43 @@ void Emulator::decode_and_execute_instr(std::uint16_t instruction) {
     break;
   }
   case 0x8: {
+    std::uint8_t first_register_num = (instruction & 0x0F00) >> 8;
+    std::uint8_t second_register_num = (instruction & 0x00F0) >> 4;
+    switch (instruction & 0x000F) {
+    case 0:
+      set_from_register_value(first_register_num, second_register_num);
+      break;
+    case 1:
+      binary_or(first_register_num, second_register_num);
+      break;
+    case 2:
+      binary_and(first_register_num, second_register_num);
+      break;
+    case 3:
+      logical_xor(first_register_num, second_register_num);
+      break;
+    case 4:
+      add_registers(first_register_num, second_register_num);
+      break;
+    case 5:
+      sub_registers(first_register_num, second_register_num);
+      break;
+    case 6:
+      shift_right(first_register_num, second_register_num);
+      break;
+    case 7:
+      sub_registers_reverse(first_register_num, second_register_num);
+      break;
+    case 0xE:
+      shift_left(first_register_num, second_register_num);
+      break;
+    }
     break;
   }
   case 0x9: {
+    std::uint8_t first_register_num = (instruction & 0x0F00) >> 8;
+    std::uint8_t second_register_num = (instruction & 0x00F0) >> 4;
+    skip_neq_reg(first_register_num, second_register_num);
     break;
   }
   case 0xA: {
@@ -181,9 +367,14 @@ void Emulator::decode_and_execute_instr(std::uint16_t instruction) {
     break;
   }
   case 0xB: {
+    std::uint16_t address = 0x0FFF & instruction;
+    jump_with_offset(address);
     break;
   }
   case 0xC: {
+    std::uint8_t register_num = (0x0F00 & instruction) >> 8;
+    std::uint8_t value = (0x00FF & instruction);
+    gen_random_num(register_num, value);
     break;
   }
   case 0xD: {
@@ -197,6 +388,37 @@ void Emulator::decode_and_execute_instr(std::uint16_t instruction) {
     break;
   }
   case 0xF: {
+    std::uint8_t register_num = (instruction & 0x0F00) >> 8;
+    std::uint8_t secondary_instr_type = (instruction & 0x00FF);
+    switch (secondary_instr_type) {
+    case 0x07:
+      set_register_to_timer_value(register_num);
+      break;
+    case 0x15:
+      set_delay_timer(register_num);
+      break;
+    case 0x18:
+      set_sound_timer(register_num);
+      break;
+    case 0x1E:
+      add_to_index(register_num);
+      break;
+    case 0x0A:
+      get_pressed_key(register_num);
+      break;
+    case 0x29:
+      get_font_address(register_num);
+      break;
+    case 0x33:
+      convert_to_decimal(register_num);
+      break;
+    case 0x55:
+      store_registers_in_memory(register_num);
+      break;
+    case 0x65:
+      grab_registers_from_memory(register_num);
+      break;
+    }
     break;
   }
   default: {
