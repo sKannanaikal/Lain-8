@@ -1,6 +1,10 @@
-#include "emulator.hpp" // TODO update this to use <emulator.hpp> instead
-#include "screen.hpp"
-#include <SDL3/SDL.h>
+/** @file emulator.cpp
+ * @brief CHIP-8 initialization, instruction decoding, and opcode handlers.
+ */
+
+#include <core/emulator.hpp>
+#include <core/screen.hpp>
+
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -8,6 +12,7 @@
 #include <cstring>
 #include <print>
 #include <random>
+#include <SDL3/SDL.h>
 #include <thread>
 
 namespace Lain8 {
@@ -15,7 +20,7 @@ namespace Lain8 {
 Emulator::Emulator() {
   std::fill_n(registers, 16, 0);
   std::fill_n(memory, 4096, 0);
-  std::fill_n(screen_buffer, 2048, 0xFFFFFFFF);
+  std::fill_n(screen_buffer, 2048, 0);
   delay_timer = 0;
   sound_timer = 0;
   i_register = 0;
@@ -70,20 +75,19 @@ void Emulator::load_program(std::uint8_t program_bytes[]) {
   std::copy(&program_bytes[0], &program_bytes[3584], &this->memory[0x200]);
   this->program_counter = 0x200;
 
-  std::jthread cpu_thread([this](std::stop_token stop) {
-    execute_program(stop);
-  });
+  std::jthread cpu_thread(
+      [this](std::stop_token stop) { execute_program(stop); });
 
   mScreen.mainLoop();
 }
 
 void Emulator::execute_program(std::stop_token stop) {
   while (!stop.stop_requested() && program_counter + 1 < sizeof(memory)) {
-    fetch_instr();
+    step();
   }
 }
 
-void Emulator::fetch_instr() {
+void Emulator::step() {
   std::uint16_t instruction =
       (static_cast<std::uint16_t>(this->memory[this->program_counter]) << 8) |
       this->memory[this->program_counter + 1];
@@ -102,14 +106,15 @@ void Emulator::jump(std::uint16_t jmp_address) {
 }
 
 void Emulator::call(std::uint16_t fun_address) {
-  this->stack[this->stack_pointer] = this->program_counter;
-  this->stack_pointer += 1;
+  if (stack_pointer == std::size(stack))
+    return;
+  stack[stack_pointer++] = program_counter;
   this->program_counter = fun_address;
 }
 
 void Emulator::ret_from_func() {
-  this->program_counter = this->stack[this->stack_pointer];
-  this->stack_pointer -= 1;
+  if (stack_pointer != 0)
+    program_counter = stack[--stack_pointer];
 }
 
 void Emulator::skip_neq_reg(std::uint8_t first_register_num,
@@ -191,46 +196,36 @@ void Emulator::logical_xor(std::uint8_t first_reg, std::uint8_t second_reg) {
       this->registers[first_reg] ^ this->registers[second_reg];
 }
 void Emulator::add_registers(std::uint8_t first_reg, std::uint8_t second_reg) {
-  if (0xFF - this->registers[first_reg] <= this->registers[second_reg]) {
-    this->registers[0xF] = 1;
-  } else {
-    this->registers[0xF] = 0;
-  }
-  this->registers[first_reg] =
-      this->registers[first_reg] + this->registers[second_reg];
+  const int sum = registers[first_reg] + registers[second_reg];
+  registers[first_reg] = static_cast<std::uint8_t>(sum);
+  registers[0xF] = sum > 0xFF;
 }
-void Emulator::sub_registers(std::uint8_t first_reg, std::uint8_t second_reg) {
-  if (this->registers[first_reg] >= this->registers[second_reg]) {
-    this->registers[0xF] = 1;
-  } else {
-    this->registers[0xF] = 0;
-  }
 
-  this->registers[first_reg] =
-      this->registers[first_reg] - this->registers[second_reg];
+void Emulator::sub_registers(std::uint8_t first_reg, std::uint8_t second_reg) {
+  const int difference = registers[first_reg] - registers[second_reg];
+  registers[first_reg] = static_cast<std::uint8_t>(difference);
+  registers[0xF] = difference >= 0;
 }
+
 void Emulator::sub_registers_reverse(std::uint8_t first_reg,
                                      std::uint8_t second_reg) {
-  if (this->registers[second_reg] >= this->registers[first_reg]) {
-    this->registers[0xF] = 1;
-  } else {
-    this->registers[0xF] = 0;
-  }
-
-  this->registers[first_reg] =
-      this->registers[second_reg] - this->registers[first_reg];
+  const int difference = registers[second_reg] - registers[first_reg];
+  registers[first_reg] = static_cast<std::uint8_t>(difference);
+  registers[0xF] = difference >= 0;
 }
 
 // configurable
 void Emulator::shift_right(std::uint8_t first_reg, std::uint8_t second_reg) {
-  this->registers[first_reg] = this->registers[second_reg]; // configurable
-  this->registers[first_reg] = this->registers[first_reg] >> 1;
+  const std::uint8_t value = registers[second_reg];
+  registers[first_reg] = value >> 1;
+  registers[0xF] = value & 1;
 }
 
-// configurable command
+// configurable
 void Emulator::shift_left(std::uint8_t first_reg, std::uint8_t second_reg) {
-  this->registers[first_reg] = this->registers[second_reg]; // configurable
-  this->registers[first_reg] = this->registers[first_reg] << 1;
+  const std::uint8_t value = registers[second_reg];
+  registers[first_reg] = static_cast<std::uint8_t>(value << 1);
+  registers[0xF] = value >> 7;
 }
 
 // configurable command
@@ -253,14 +248,10 @@ void Emulator::gen_random_num(std::uint8_t result_reg_num, std::uint8_t value) {
 }
 
 void Emulator::convert_to_decimal(std::uint8_t register_num) {
-  std::uint8_t value = this->registers[register_num];
-  std::uint8_t lowest_digit = value % 10;
-  std::uint8_t middle_digit = ((value % 100) - lowest_digit) / 10;
-  std::uint8_t highest_digit =
-      ((value % 1000) - (lowest_digit + middle_digit * 10)) / 100;
-  this->memory[this->i_register] = lowest_digit;
-  this->memory[this->i_register + 1] = middle_digit;
-  this->memory[this->i_register + 2] = highest_digit;
+  const std::uint8_t value = registers[register_num];
+  memory[i_register] = value / 100;
+  memory[i_register + 1] = (value / 10) % 10;
+  memory[i_register + 2] = value % 10;
 }
 
 void Emulator::get_font_address(std::uint8_t register_num) {
@@ -298,32 +289,24 @@ void Emulator::grab_registers_from_memory(std::uint8_t max_register_num) {
 
 void Emulator::draw(std::uint8_t x_register, std::uint8_t y_register,
                     std::uint8_t num_pixels) {
-  std::println("We are going to update V{:X} with x value, and V{:X} with y "
-               "value, and draw {:#02X} pixels",
-               x_register, y_register, num_pixels);
-  std::uint8_t xRegVal =
-      this->registers[x_register] % 64; // accounting for wrap around
-  std::uint8_t yRegVal =
-      this->registers[y_register] % 32; // accounting for wrap around
-  this->registers[0xF] = 0;
-  std::println("V{:X} (x) = {:#02X} V{:X} (y) = {:#02X}", x_register, xRegVal,
-               y_register, yRegVal);
-  for (int j = 0; j < num_pixels; j++) {
-    std::uint8_t desired_sprite = this->memory[this->i_register + j];
-    std::println("this->i_register = {:#04X}", this->i_register);
-    std::uint16_t starting_pixel_index = 64 * (yRegVal + j) + xRegVal;
-    std::uint8_t pixels_to_draw =
-        (starting_pixel_index + 8 < 2048) ? 8 : 2048 - starting_pixel_index;
-    std::println("The number of pixels we need to draw is {}", pixels_to_draw);
-    for (std::uint8_t i = 0; i < pixels_to_draw; i++) {
-      std::uint8_t current_bit = ((desired_sprite) >> (7 - i)) & 0x01;
-      if (current_bit == 1) {
-        this->screen_buffer[starting_pixel_index + i] =
-            this->screen_buffer[starting_pixel_index + i] == 0 ? 0xFFFFFFFF
-                                                               : 0x00000000;
-        if (this->screen_buffer[starting_pixel_index + i] == 0x00000000)
-          this->registers[0xF] = 1;
-      }
+  constexpr int width = 64;
+  constexpr int height = 32;
+  const int x = registers[x_register] % width;
+  const int y = registers[y_register] % height;
+  registers[0xF] = 0;
+
+  for (int row = 0; row < num_pixels && y + row < height &&
+                    i_register + row < static_cast<int>(std::size(memory));
+       ++row) {
+    const std::uint8_t sprite = memory[i_register + row];
+    for (int column = 0; column < 8 && x + column < width; ++column) {
+      if ((sprite & (0x80 >> column)) == 0)
+        continue;
+
+      auto &pixel = screen_buffer[(y + row) * width + x + column];
+      if (pixel != 0)
+        registers[0xF] = 1;
+      pixel ^= 0xFFFFFFFF;
     }
   }
   mScreen.render(this->screen_buffer);

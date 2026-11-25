@@ -1,0 +1,8 @@
+BasedOnStyle: LLVM
+SortIncludes: CaseInsensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^["<]core/'
+    Priority: -1
+  - Regex: '.*'
+    Priority: 1

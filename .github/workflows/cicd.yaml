@@ -32,6 +32,8 @@ jobs:
     steps:
       - name: Clone Lain-8 Repo
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setting up Build Directory
         run: mkdir ./build
@@ -40,10 +42,10 @@ jobs:
         run: cmake -B ./build
 
       - name: Build Out Unit Test Binary
-        run: cmake --build ./build
+        run: cmake --build ./build --target lain8-tester
 
-      - name: Run Test Binary
-        run: ./build/lain8-tester
+      - name: Run Instruction Tests
+        run: ctest --test-dir ./build --output-on-failure --no-tests=error
 
       - name: Cleaning up
         run: cmake --build ./build --target clean 

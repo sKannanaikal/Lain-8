@@ -1,7 +1,7 @@
 /**
  * @file main.cpp
  * @author Sean Kannanaikal
- * @brief
+ * @brief Application entry point for the Lain-8 command shell.
  * @version 1.0
  * @date 2026-08-30
  *
@@ -9,12 +9,12 @@
  *
  */
 
-#include "core/shell.hpp"
+#include <core/shell.hpp>
 
 /**
- * @brief entry point for Lain-8 shell interpreter
+ * @brief Run the interactive shell until it exits.
  *
- * @return int status code
+ * @return Zero after the shell exits.
  */
 int main() {
   Lain8::execute_lain_shell();

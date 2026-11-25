@@ -1,4 +1,9 @@
-#include "screen.hpp"
+/** @file screen.cpp
+ * @brief SDL resource management and the display and keypad event loop.
+ */
+
+#include <core/screen.hpp>
+
 #include <array>
 #include <print>
 
@@ -13,7 +18,7 @@ Screen::Screen() {
   SDL_SetRenderLogicalPresentation(this->mRenderer, 64, 32,
                                    SDL_LOGICAL_PRESENTATION_LETTERBOX);
 
-  std::fill_n(this->mPixelBuffer, 2048, 0xFFFFFFFF);
+  std::fill_n(this->mPixelBuffer, 2048, 0);
   this->mSurface = SDL_CreateSurfaceFrom(64, 32, SDL_PIXELFORMAT_RGBA32,
                                          this->mPixelBuffer, 256);
   this->mTexture =
@@ -34,9 +39,8 @@ std::optional<bool> Screen::examineKeyStates(std::uint8_t keyCode) {
 
   desiredKey = keyCode;
   keyStateRequested = true;
-  keyStateReady.wait(lock, [this] {
-    return !keyStateRequested || screenLoopExited;
-  });
+  keyStateReady.wait(lock,
+                     [this] { return !keyStateRequested || screenLoopExited; });
   if (screenLoopExited)
     return std::nullopt;
   return desiredKeyPressed;
@@ -46,9 +50,8 @@ std::optional<std::uint8_t> Screen::waitForPressedKey() {
   std::unique_lock<std::mutex> lock(mPixelBufferMutex);
   pressedKey.reset();
   waitingForPressedKey = true;
-  keyStateReady.wait(lock, [this] {
-    return pressedKey.has_value() || screenLoopExited;
-  });
+  keyStateReady.wait(
+      lock, [this] { return pressedKey.has_value() || screenLoopExited; });
   waitingForPressedKey = false;
   return pressedKey;
 }
@@ -70,8 +73,8 @@ void Screen::mainLoop() {
       break;
     std::lock_guard<std::mutex> lock(mPixelBufferMutex);
     if (keyStateRequested) {
-      desiredKeyPressed = desiredKey < keyMap.size() &&
-                          keys[keyMap[desiredKey]];
+      desiredKeyPressed =
+          desiredKey < keyMap.size() && keys[keyMap[desiredKey]];
       keyStateRequested = false;
       keyStateReady.notify_one();
     }
