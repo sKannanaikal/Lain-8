@@ -21,6 +21,48 @@ Emulator::Emulator() {
   i_register = 0;
   program_counter = 0;
   stack_pointer = 0;
+
+  // populating fonts
+  std::uint8_t char0_repr[5] = {0xF0, 0x90, 0x90, 0x90, 0xF0}; // 0
+  std::uint8_t char1_repr[5] = {0x20, 0x60, 0x20, 0x20, 0x70}; // 1
+  std::uint8_t char2_repr[5] = {0xF0, 0x10, 0xF0, 0x80, 0xF0}; // 2
+  std::uint8_t char3_repr[5] = {0xF0, 0x10, 0xF0, 0x10, 0xF0}; // 3
+  std::uint8_t char4_repr[5] = {0x90, 0x90, 0xF0, 0x10, 0xF0}; // 4
+  std::uint8_t char5_repr[5] = {0xF0, 0x80, 0xF0, 0x10, 0xF0}; // 5
+  std::uint8_t char6_repr[5] = {0xF0, 0x80, 0xF0, 0x90, 0xF0}; // 6
+  std::uint8_t char7_repr[5] = {0xF0, 0x10, 0x20, 0x40, 0x40}; // 7
+  std::uint8_t char8_repr[5] = {0xF0, 0x90, 0xF0, 0x90, 0xF0}; // 8
+  std::uint8_t char9_repr[5] = {0xF0, 0x90, 0xF0, 0x10, 0xF0}; // 9
+  std::uint8_t charA_repr[5] = {0xF0, 0x90, 0xF0, 0x90, 0x90}; // A
+  std::uint8_t charB_repr[5] = {0xE0, 0x90, 0xE0, 0x90, 0xE0}; // B
+  std::uint8_t charC_repr[5] = {0xF0, 0x80, 0x80, 0x80, 0xF0}; // C
+  std::uint8_t charD_repr[5] = {0xE0, 0x90, 0x90, 0x90, 0xE0}; // D
+  std::uint8_t charE_repr[5] = {0xF0, 0x80, 0xF0, 0x80, 0xF0}; // E
+  std::uint8_t charF_repr[5] = {0xF0, 0x80, 0xF0, 0x80, 0x80}; // F
+
+  _populate_font(char0_repr, 0);
+  _populate_font(char1_repr, 5);
+  _populate_font(char2_repr, 10);
+  _populate_font(char3_repr, 15);
+  _populate_font(char4_repr, 20);
+  _populate_font(char5_repr, 25);
+  _populate_font(char6_repr, 30);
+  _populate_font(char7_repr, 35);
+  _populate_font(char8_repr, 40);
+  _populate_font(char9_repr, 45);
+  _populate_font(charA_repr, 50);
+  _populate_font(charB_repr, 55);
+  _populate_font(charC_repr, 60);
+  _populate_font(charD_repr, 65);
+  _populate_font(charE_repr, 70);
+  _populate_font(charF_repr, 75);
+}
+
+void Emulator::_populate_font(std::uint8_t font_repr[],
+                              std::uint8_t memory_index) {
+  for (std::uint8_t i = memory_index; i < (memory_index + 5); i++) {
+    this->memory[i] = font_repr[i - memory_index];
+  }
 }
 
 void Emulator::load_program(std::uint8_t program_bytes[]) {
@@ -28,21 +70,17 @@ void Emulator::load_program(std::uint8_t program_bytes[]) {
   std::copy(&program_bytes[0], &program_bytes[3584], &this->memory[0x200]);
   this->program_counter = 0x200;
 
-  std::thread cpu_thread(&Emulator::execute_program, this);
+  std::jthread cpu_thread([this](std::stop_token stop) {
+    execute_program(stop);
+  });
 
   mScreen.mainLoop();
 }
 
-void Emulator::execute_program() {
-  // TODO think of a better way to find end of program instead of just 3584
-  for (int i = this->program_counter; i < 0xE00; i += 2) {
-    std::println("Thread started gonna fetch i={:X} | program_counter = {:X}",
-                 i, this->program_counter);
+void Emulator::execute_program(std::stop_token stop) {
+  while (!stop.stop_requested() && program_counter + 1 < sizeof(memory)) {
     fetch_instr();
-    // std::this_thread::sleep_for(std::chrono::seconds(2));
   }
-
-  // TODO create some sort of quit command to Screen to say program done
 }
 
 void Emulator::fetch_instr() {
@@ -96,6 +134,21 @@ void Emulator::skip_neq_val(std::uint8_t register_num, std::uint8_t cmp_value) {
 void Emulator::skip_eq_val(std::uint8_t register_num, std::uint8_t cmp_value) {
   if (this->registers[register_num] == cmp_value)
     this->program_counter += 2;
+}
+
+void Emulator::skip_if_key_pressed(std::uint8_t key_code) {
+  if (mScreen.examineKeyStates(key_code) == true)
+    this->program_counter += 2;
+}
+
+void Emulator::skip_if_not_key_pressed(std::uint8_t key_code) {
+  if (mScreen.examineKeyStates(key_code) == false)
+    this->program_counter += 2;
+}
+
+void Emulator::get_pressed_key(std::uint8_t register_num) {
+  if (const auto key_code = mScreen.waitForPressedKey())
+    this->registers[register_num] = *key_code;
 }
 
 void Emulator::set_register_value(std::uint8_t register_num,
@@ -197,6 +250,22 @@ void Emulator::gen_random_num(std::uint8_t result_reg_num, std::uint8_t value) {
   int random_num = rng(engine);
 
   this->registers[result_reg_num] = random_num & value;
+}
+
+void Emulator::convert_to_decimal(std::uint8_t register_num) {
+  std::uint8_t value = this->registers[register_num];
+  std::uint8_t lowest_digit = value % 10;
+  std::uint8_t middle_digit = ((value % 100) - lowest_digit) / 10;
+  std::uint8_t highest_digit =
+      ((value % 1000) - (lowest_digit + middle_digit * 10)) / 100;
+  this->memory[this->i_register] = lowest_digit;
+  this->memory[this->i_register + 1] = middle_digit;
+  this->memory[this->i_register + 2] = highest_digit;
+}
+
+void Emulator::get_font_address(std::uint8_t register_num) {
+  std::uint8_t desired_character = this->registers[register_num];
+  this->i_register = desired_character * 5;
 }
 
 void Emulator::set_register_to_timer_value(std::uint8_t register_num) {
@@ -385,6 +454,16 @@ void Emulator::decode_and_execute_instr(std::uint16_t instruction) {
     break;
   }
   case 0xE: {
+    std::uint8_t register_num = (instruction & 0x0F00) >> 8;
+    std::uint8_t key_code = this->registers[register_num];
+    switch (instruction & 0x00FF) {
+    case 0x9E:
+      skip_if_key_pressed(key_code);
+      break;
+    case 0xA1:
+      skip_if_not_key_pressed(key_code);
+      break;
+    }
     break;
   }
   case 0xF: {

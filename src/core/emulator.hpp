@@ -2,6 +2,7 @@
 #define CORE_EMULATOR_HPP
 #include "screen.hpp"
 #include <cstdint>
+#include <stop_token>
 
 namespace Lain8 {
 
@@ -21,7 +22,7 @@ public:
 
   Emulator();
   void load_program(std::uint8_t program_bytes[]);
-  void execute_program();
+  void execute_program(std::stop_token stop = {});
 
 private:
   void fetch_instr();
@@ -57,7 +58,7 @@ private:
   void jump_with_offset(std::uint16_t address); // configurable
   void gen_random_num(std::uint8_t result_reg_num, std::uint8_t value);
   void skip_if_key_pressed(std::uint8_t key_code);
-  void skip_if_not_key_pressed(std::uint8_t keycode);
+  void skip_if_not_key_pressed(std::uint8_t key_code);
   void set_register_to_timer_value(std::uint8_t register_num);
   void set_delay_timer(std::uint8_t register_num);
   void set_sound_timer(std::uint8_t register_num);
@@ -67,6 +68,7 @@ private:
   void convert_to_decimal(std::uint8_t register_num);
   void store_registers_in_memory(std::uint8_t max_register_num);
   void grab_registers_from_memory(std::uint8_t max_register_num);
+  void _populate_font(std::uint8_t font_repr[], std::uint8_t memory_index);
 };
 
 } // namespace Lain8
