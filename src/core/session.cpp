@@ -24,7 +24,6 @@ void Session::run(std::span<const std::uint8_t> program) {
 
   using Clock = std::chrono::steady_clock;
   using TimerPeriod = std::chrono::duration<std::int64_t, std::ratio<1, 60>>;
-  constexpr int instructions_per_frame = 12;
   const auto start = Clock::now();
   TimerPeriod previous_tick{0};
 
@@ -39,10 +38,7 @@ void Session::run(std::span<const std::uint8_t> program) {
     emulator.tick_timers((current_tick - previous_tick).count());
     previous_tick = current_tick;
 
-    for (int i = 0; i < instructions_per_frame; ++i) {
-      if (emulator.step() != Emulator::StepResult::Executed)
-        break;
-    }
+    emulator.step();
 
     if (emulator.display_dirty() || events.redraw_requested) {
       if (!monitor.present(emulator.framebuffer())) {

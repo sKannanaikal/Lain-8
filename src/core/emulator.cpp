@@ -294,12 +294,18 @@ void Emulator::add_to_index(std::uint8_t register_num) {
 }
 
 void Emulator::store_registers_in_memory(std::uint8_t max_register_num) {
+  if (i_register + max_register_num >= static_cast<int>(std::size(memory)))
+    return;
+
   for (int i = 0; i <= max_register_num; i++) {
     this->memory[this->i_register + i] = this->registers[i];
   }
 }
 
 void Emulator::grab_registers_from_memory(std::uint8_t max_register_num) {
+  if (i_register + max_register_num >= static_cast<int>(std::size(memory)))
+    return;
+
   for (int i = 0; i <= max_register_num; i++) {
     this->registers[i] = this->memory[this->i_register + i];
   }

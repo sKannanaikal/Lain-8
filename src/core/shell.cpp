@@ -96,8 +96,12 @@ static inline void _executeLoad() {
   std::array<std::uint8_t, Emulator::max_program_size + 1> program;
   file.read(reinterpret_cast<char *>(program.data()), program.size());
   const auto size = static_cast<std::size_t>(file.gcount());
-  if (file.bad() || (file.fail() && !file.eof()) || size == 0 ||
-      size > Emulator::max_program_size) {
+  if (size > Emulator::max_program_size) {
+    std::println("ROM exceeds the {}-byte program memory limit",
+                 Emulator::max_program_size);
+    return;
+  }
+  if (file.bad() || (file.fail() && !file.eof()) || size == 0) {
     std::println("Could not read a valid CHIP-8 ROM from {}", filepath);
     return;
   }
