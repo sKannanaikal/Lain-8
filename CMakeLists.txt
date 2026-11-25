@@ -28,7 +28,7 @@ add_executable(lain8 src/main.cpp)
 target_link_libraries(lain8 PRIVATE core_lib)
 
 # Building out tester binary for unit tests
-add_executable(lain8-tester tests/instructions.cpp src/core/emulator.cpp)
+add_executable(lain8-tester tests/testmain.cpp src/core/emulator.cpp)
 target_include_directories(lain8-tester PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(lain8-tester PRIVATE GTest::gtest_main SDL3::Headers)
 include(GoogleTest)
