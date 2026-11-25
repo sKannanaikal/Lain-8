@@ -3,29 +3,22 @@
  */
 
 #include <core/emulator.hpp>
-#include <core/screen.hpp>
 
 #include <algorithm>
-#include <chrono>
-#include <cstdint>
-#include <cstdlib>
-#include <cstring>
-#include <print>
 #include <random>
-#include <SDL3/SDL.h>
-#include <thread>
 
 namespace Lain8 {
 
 Emulator::Emulator() {
   std::fill_n(registers, 16, 0);
   std::fill_n(memory, 4096, 0);
-  std::fill_n(screen_buffer, 2048, 0);
+
   delay_timer = 0;
   sound_timer = 0;
   i_register = 0;
   program_counter = 0;
   stack_pointer = 0;
+  std::fill_n(stack, 16, 0);
 
   // populating fonts
   std::uint8_t char0_repr[5] = {0xF0, 0x90, 0x90, 0x90, 0xF0}; // 0
@@ -70,33 +63,50 @@ void Emulator::_populate_font(std::uint8_t font_repr[],
   }
 }
 
-void Emulator::load_program(std::uint8_t program_bytes[]) {
-  // get the proper size of a program and pass it in here
-  std::copy(&program_bytes[0], &program_bytes[3584], &this->memory[0x200]);
-  this->program_counter = 0x200;
+bool Emulator::load_program(std::span<const std::uint8_t> program) {
+  if (program.empty() || program.size() > max_program_size)
+    return false;
 
-  std::jthread cpu_thread(
-      [this](std::stop_token stop) { execute_program(stop); });
-
-  mScreen.mainLoop();
+  Emulator fresh;
+  std::ranges::copy(program, fresh.memory + program_start);
+  fresh.program_counter = program_start;
+  *this = fresh;
+  return true;
 }
 
-void Emulator::execute_program(std::stop_token stop) {
-  while (!stop.stop_requested() && program_counter + 1 < sizeof(memory)) {
-    step();
+void Emulator::tick_timers(std::size_t ticks) {
+  delay_timer -= std::min<std::size_t>(delay_timer, ticks);
+  sound_timer -= std::min<std::size_t>(sound_timer, ticks);
+}
+
+void Emulator::set_keys(const Keypad &keys,
+                        std::optional<std::uint8_t> pressed) {
+  keys_ = keys;
+  pressed_key_ = pressed;
+  if (pressed_key_ && *pressed_key_ >= keys_.size())
+    pressed_key_.reset();
+}
+
+Emulator::StepResult Emulator::step() {
+  if (program_counter + 1 >= static_cast<int>(std::size(memory)))
+    return StepResult::EndOfMemory;
+
+  const std::uint16_t instruction =
+      (static_cast<std::uint16_t>(memory[program_counter]) << 8) |
+      memory[program_counter + 1];
+
+  if ((instruction & 0xF0FF) == 0xF00A) {
+    const auto key = pressed_key();
+    if (!key)
+      return StepResult::WaitingForKey;
+    registers[(instruction >> 8) & 0xF] = *key;
+    program_counter += 2;
+    return StepResult::Executed;
   }
-}
 
-void Emulator::step() {
-  std::uint16_t instruction =
-      (static_cast<std::uint16_t>(this->memory[this->program_counter]) << 8) |
-      this->memory[this->program_counter + 1];
-  this->program_counter += 2;
-  // std::println("Instruction fetched gonna decode and execute {:#04X} located
-  // "
-  //             "at pc = {:X}",
-  // instruction, this->program_counter);
+  program_counter += 2;
   decode_and_execute_instr(instruction);
+  return StepResult::Executed;
 }
 
 void Emulator::jump(std::uint16_t jmp_address) {
@@ -142,18 +152,26 @@ void Emulator::skip_eq_val(std::uint8_t register_num, std::uint8_t cmp_value) {
 }
 
 void Emulator::skip_if_key_pressed(std::uint8_t key_code) {
-  if (mScreen.examineKeyStates(key_code) == true)
+  if (key_code < keys_.size() && keys_[key_code])
     this->program_counter += 2;
 }
 
 void Emulator::skip_if_not_key_pressed(std::uint8_t key_code) {
-  if (mScreen.examineKeyStates(key_code) == false)
+  if (key_code >= keys_.size() || !keys_[key_code])
     this->program_counter += 2;
 }
 
-void Emulator::get_pressed_key(std::uint8_t register_num) {
-  if (const auto key_code = mScreen.waitForPressedKey())
-    this->registers[register_num] = *key_code;
+std::optional<std::uint8_t> Emulator::pressed_key() {
+  if (pressed_key_) {
+    const auto key = pressed_key_;
+    pressed_key_.reset();
+    return key;
+  }
+
+  const auto held_key = std::ranges::find(keys_, true);
+  if (held_key == keys_.end())
+    return std::nullopt;
+  return static_cast<std::uint8_t>(held_key - keys_.begin());
 }
 
 void Emulator::set_register_value(std::uint8_t register_num,
@@ -233,8 +251,8 @@ void Emulator::jump_with_offset(std::uint16_t address) {
   this->program_counter = this->registers[0] + address;
 }
 void Emulator::clear_screen() {
-  std::fill_n(this->screen_buffer, 2048, 0x00000000);
-  mScreen.render(this->screen_buffer);
+  pixels_.fill(false);
+  display_dirty_ = true;
 }
 
 void Emulator::gen_random_num(std::uint8_t result_reg_num, std::uint8_t value) {
@@ -289,8 +307,8 @@ void Emulator::grab_registers_from_memory(std::uint8_t max_register_num) {
 
 void Emulator::draw(std::uint8_t x_register, std::uint8_t y_register,
                     std::uint8_t num_pixels) {
-  constexpr int width = 64;
-  constexpr int height = 32;
+  constexpr int width = display_width;
+  constexpr int height = display_height;
   const int x = registers[x_register] % width;
   const int y = registers[y_register] % height;
   registers[0xF] = 0;
@@ -303,26 +321,17 @@ void Emulator::draw(std::uint8_t x_register, std::uint8_t y_register,
       if ((sprite & (0x80 >> column)) == 0)
         continue;
 
-      auto &pixel = screen_buffer[(y + row) * width + x + column];
-      if (pixel != 0)
+      auto &pixel = pixels_[(y + row) * width + x + column];
+      if (pixel)
         registers[0xF] = 1;
-      pixel ^= 0xFFFFFFFF;
+      pixel = !pixel;
+      display_dirty_ = true;
     }
   }
-  mScreen.render(this->screen_buffer);
 }
 
 void Emulator::decode_and_execute_instr(std::uint16_t instruction) {
-  // get values from bitmasks
-  // clean this code up it's nasty
-  std::uint16_t first_nibble = 0xF000;
-  std::uint16_t second_nibble = 0x0F00;
-  std::uint16_t third_nibble = 0x00F0;
-  std::uint16_t fourth_nibble = 0x000F;
-  std::uint8_t instruction_type = instruction >> 12;
-  // TODO enclose all of these individual cases in curly braces
-  std::println("Current Instruction is {:4X} and current nibble is {:X}",
-               instruction, instruction_type);
+  const std::uint8_t instruction_type = instruction >> 12;
   switch (instruction_type) {
   case 0x0: {
     if (instruction == 0x00E0) {
@@ -465,9 +474,6 @@ void Emulator::decode_and_execute_instr(std::uint16_t instruction) {
     case 0x1E:
       add_to_index(register_num);
       break;
-    case 0x0A:
-      get_pressed_key(register_num);
-      break;
     case 0x29:
       get_font_address(register_num);
       break;
@@ -484,7 +490,6 @@ void Emulator::decode_and_execute_instr(std::uint16_t instruction) {
     break;
   }
   default: {
-    std::println("[-] Invalid Byte");
     break;
   }
   }

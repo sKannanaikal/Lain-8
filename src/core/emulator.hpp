@@ -4,10 +4,11 @@
 
 #ifndef CORE_EMULATOR_HPP
 #define CORE_EMULATOR_HPP
-#include <core/screen.hpp>
-
+#include <array>
+#include <cstddef>
 #include <cstdint>
-#include <stop_token>
+#include <optional>
+#include <span>
 
 namespace Lain8 {
 
@@ -31,30 +32,33 @@ public:
       stack_pointer; ///< Number of pending return addresses on the stack.
   std::uint16_t
       stack[16]; ///< Storage for up to sixteen subroutine return addresses.
-  std::uint32_t
-      screen_buffer[2048]; ///< CPU-side 64 by 32 framebuffer in RGBA32 format.
-  Screen
-      mScreen; ///< Display and keypad bridge shared with the SDL main thread.
+  static constexpr int display_width = 64;
+  static constexpr int display_height = 32;
+  static constexpr std::size_t program_start = 0x200;
+  static constexpr std::size_t max_program_size = 4096 - program_start;
+  using Framebuffer = std::array<bool, display_width * display_height>;
+  using Keypad = std::array<bool, 16>;
 
-  /// @brief Initialize machine state and install the hexadecimal font in RAM.
+  enum class StepResult { Executed, WaitingForKey, EndOfMemory };
+
   Emulator();
-  /** @brief Copy a ROM to address 0x200 and run it until the display closes.
-   * @param program_bytes Buffer containing 3584 readable bytes, padded as
-   * needed.
-   * @note Call from the SDL main thread. Instructions run on a worker thread.
-   */
-  void load_program(std::uint8_t program_bytes[]);
-  /** @brief Run instructions while a complete opcode fits in RAM.
-   * @param stop Token checked between instructions.
-   */
-  void execute_program(std::stop_token stop = {});
-  /** @brief Fetch a big-endian opcode, advance the PC, and execute one
-   * instruction.
-   * @pre The program counter points to two readable bytes of RAM.
-   */
-  void step();
+
+  /// Reset the machine and copy a ROM into guest RAM.
+  bool load_program(std::span<const std::uint8_t> program);
+  StepResult step();
+  void tick_timers(std::size_t ticks);
+  void set_keys(const Keypad &keys, std::optional<std::uint8_t> pressed = {});
+
+  const Framebuffer &framebuffer() const { return pixels_; }
+  bool display_dirty() const { return display_dirty_; }
+  void acknowledge_frame() { display_dirty_ = false; }
 
 private:
+  Framebuffer pixels_{};
+  Keypad keys_{};
+  std::optional<std::uint8_t> pressed_key_;
+  bool display_dirty_ = true;
+
   /// @brief Dispatch an opcode using its instruction and operand fields.
   void decode_and_execute_instr(std::uint16_t instruction);
   /// @brief Set the PC to the absolute address (1nnn).
@@ -132,9 +136,8 @@ private:
   void set_sound_timer(std::uint8_t register_num);
   /// @brief Add Vx to I (Fx1E).
   void add_to_index(std::uint8_t register_num);
-  /// @brief Wait for a mapped key and store its code in Vx if input arrives
-  /// (Fx0A).
-  void get_pressed_key(std::uint8_t register_num);
+  /// @brief Read a mapped key if one is available.
+  std::optional<std::uint8_t> pressed_key();
   /// @brief Set I to the address of the five-byte glyph indexed by Vx (Fx29).
   void get_font_address(std::uint8_t register_num);
   /// @brief Store the hundreds, tens, and ones digits of Vx starting at I

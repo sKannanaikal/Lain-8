@@ -21,15 +21,13 @@ add_subdirectory(external/SDL EXCLUDE_FROM_ALL)
 
 # Building out Local Libraries
 add_subdirectory(src/core)
-target_link_libraries(core_lib SDL3::SDL3)
 
 # Building out main emulator application
 add_executable(lain8 src/main.cpp)
-target_link_libraries(lain8 PRIVATE core_lib)
+target_link_libraries(lain8 PRIVATE frontend_lib)
 
 # Building out tester binary for unit tests
-add_executable(lain8-tester tests/testmain.cpp src/core/emulator.cpp)
-target_include_directories(lain8-tester PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(lain8-tester PRIVATE GTest::gtest_main SDL3::Headers)
+add_executable(lain8-tester tests/testmain.cpp)
+target_link_libraries(lain8-tester PRIVATE GTest::gtest_main core_lib)
 include(GoogleTest)
 gtest_discover_tests(lain8-tester)

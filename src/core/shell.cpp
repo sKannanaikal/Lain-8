@@ -3,8 +3,10 @@
  */
 
 #include <core/emulator.hpp>
+#include <core/session.hpp>
 #include <core/shell.hpp>
 
+#include <array>
 #include <fstream>
 #include <iostream>
 #include <print>
@@ -65,7 +67,7 @@ static inline void _hexdump(std::uint8_t buffer[], std::string_view title,
     std::print("{:02X} ", buffer[i]);
 
     if (i % 16 == 15) {
-      for (int j = (i - 15); j < i; j++) {
+      for (int j = (i - 15); j <= i; j++) {
         if (buffer[j] >= 0x20 && buffer[j] <= 0x7E)
           std::print("{:c}", buffer[j]);
         else
@@ -74,28 +76,35 @@ static inline void _hexdump(std::uint8_t buffer[], std::string_view title,
       std::println();
     }
   }
+  if (buffer_size % 16 != 0)
+    std::println();
 }
 
 /// @brief Prompt for a ROM path, read the file, and start an emulator session.
 static inline void _executeLoad() {
-  std::string filepath = "";
+  std::string filepath;
   std::print("Enter a filepath to a CHIP-8 program: ");
-  std::getline(std::cin, filepath);
+  if (!std::getline(std::cin, filepath))
+    return;
 
-  // TODO verify program exists IFF then load into Chip8 system memory
-  std::ifstream fileReaderStream(filepath, std::ios::binary);
-  if (!fileReaderStream.is_open())
+  std::ifstream file(filepath, std::ios::binary);
+  if (!file) {
     std::println("Failed to open {}", filepath);
-  else {
-    // this is the max allowed size for a program in CHIP-8
-    std::uint8_t program_bytes[3584] = {0};
-    fileReaderStream.read(reinterpret_cast<char *>(program_bytes), 3584);
-    _hexdump(program_bytes, "Program Bytes", 3584);
-    // TODO create an emulator object and then call execute program
-    Emulator emulator;
-    emulator.load_program(program_bytes);
+    return;
   }
-  return;
+
+  std::array<std::uint8_t, Emulator::max_program_size + 1> program;
+  file.read(reinterpret_cast<char *>(program.data()), program.size());
+  const auto size = static_cast<std::size_t>(file.gcount());
+  if (file.bad() || (file.fail() && !file.eof()) || size == 0 ||
+      size > Emulator::max_program_size) {
+    std::println("Could not read a valid CHIP-8 ROM from {}", filepath);
+    return;
+  }
+
+  _hexdump(program.data(), "Program Bytes", static_cast<int>(size));
+  Session session;
+  session.run(std::span{program}.first(size));
 }
 
 /// @brief Placeholder for the PAUSE command.
@@ -116,7 +125,8 @@ void execute_lain_shell() {
   bool should_quit = false;
   while (!should_quit) {
     std::print("> ");
-    std::getline(std::cin, input_command);
+    if (!std::getline(std::cin, input_command))
+      return;
     command = _stringToLainCommand(input_command);
     switch (command) {
     case LainCommand::LOAD:

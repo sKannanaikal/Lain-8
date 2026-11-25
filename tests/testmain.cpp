@@ -5,55 +5,28 @@
 #include <core/emulator.hpp>
 
 #include <algorithm>
-#include <array>
 #include <gtest/gtest.h>
 
 namespace Lain8 {
 namespace {
 
-std::array<bool, 16> keys;
-std::optional<std::uint8_t> nextKey;
-
-} // namespace
-
-/// @name Headless screen test doubles
-/// @brief Replace SDL rendering and input with deterministic test state.
-/// @{
-Screen::Screen() {}
-Screen::~Screen() {}
-void Screen::mainLoop() {}
-void Screen::render(std::uint32_t pixels[]) {
-  std::copy_n(pixels, 2048, mPixelBuffer);
-}
-std::optional<bool> Screen::examineKeyStates(std::uint8_t keyCode) {
-  return keyCode < keys.size() && keys[keyCode];
-}
-std::optional<std::uint8_t> Screen::waitForPressedKey() { return nextKey; }
-/// @}
-
-namespace {
-
-/// @brief Owns a fresh machine and resets simulated input for each test.
+/// @brief Owns a fresh machine for each test.
 class InstructionTest : public testing::Test {
 protected:
   Emulator cpu;
   static constexpr std::uint16_t start = 0x200;
-
-  void SetUp() override {
-    keys.fill(false);
-    nextKey.reset();
-  }
 
   /**
    * @brief Write an opcode to RAM and execute it through Emulator::step().
    * @param opcode Encoded CHIP-8 instruction.
    * @param address RAM address at which to place the instruction.
    */
-  void run(std::uint16_t opcode, std::uint16_t address = start) {
+  Emulator::StepResult run(std::uint16_t opcode,
+                           std::uint16_t address = start) {
     cpu.program_counter = address;
     cpu.memory[address] = opcode >> 8;
     cpu.memory[address + 1] = opcode & 0xFF;
-    cpu.step();
+    return cpu.step();
   }
 };
 
@@ -63,12 +36,16 @@ TEST_F(InstructionTest, Ignore_legacy_call) {
 }
 
 TEST_F(InstructionTest, Clear_screen) {
-  std::fill_n(cpu.screen_buffer, 2048, 0xFFFFFFFF);
+  cpu.i_register = 0x300;
+  cpu.memory[0x300] = 0x80;
+  run(0xD011);
+  ASSERT_TRUE(cpu.framebuffer().front());
+  cpu.acknowledge_frame();
+
   run(0x00E0);
-  EXPECT_TRUE(std::ranges::all_of(cpu.screen_buffer,
-                                  [](auto pixel) { return pixel == 0; }));
-  EXPECT_TRUE(std::ranges::all_of(cpu.mScreen.mPixelBuffer,
-                                  [](auto pixel) { return pixel == 0; }));
+  EXPECT_TRUE(std::ranges::none_of(cpu.framebuffer(),
+                                  [](bool pixel) { return pixel; }));
+  EXPECT_TRUE(cpu.display_dirty());
 }
 
 TEST_F(InstructionTest, Return_from_subroutine) {
@@ -258,13 +235,13 @@ TEST_F(InstructionTest, Draw_sprite) {
   cpu.registers[1] = 3;
   cpu.registers[2] = 4;
   run(0xD122);
-  EXPECT_EQ(cpu.screen_buffer[4 * 64 + 3], 0xFFFFFFFF);
-  EXPECT_EQ(cpu.screen_buffer[4 * 64 + 4], 0);
-  EXPECT_EQ(cpu.screen_buffer[4 * 64 + 5], 0xFFFFFFFF);
-  EXPECT_EQ(cpu.screen_buffer[5 * 64 + 4], 0xFFFFFFFF);
+  EXPECT_EQ(cpu.framebuffer()[4 * 64 + 3], true);
+  EXPECT_EQ(cpu.framebuffer()[4 * 64 + 4], 0);
+  EXPECT_EQ(cpu.framebuffer()[4 * 64 + 5], true);
+  EXPECT_EQ(cpu.framebuffer()[5 * 64 + 4], true);
   EXPECT_EQ(cpu.registers[15], 0);
   run(0xD122);
-  EXPECT_EQ(cpu.screen_buffer[4 * 64 + 3], 0);
+  EXPECT_EQ(cpu.framebuffer()[4 * 64 + 3], 0);
   EXPECT_EQ(cpu.registers[15], 1);
 }
 
@@ -274,30 +251,35 @@ TEST_F(InstructionTest, Clip_sprite_at_edges) {
   cpu.registers[1] = 127;
   cpu.registers[2] = 62;
   run(0xD122);
-  EXPECT_EQ(cpu.screen_buffer[30 * 64 + 63], 0xFFFFFFFF);
-  EXPECT_EQ(cpu.screen_buffer[31 * 64], 0);
-  EXPECT_EQ(cpu.screen_buffer[31 * 64 + 63], 0xFFFFFFFF);
+  EXPECT_EQ(cpu.framebuffer()[30 * 64 + 63], true);
+  EXPECT_EQ(cpu.framebuffer()[31 * 64], 0);
+  EXPECT_EQ(cpu.framebuffer()[31 * 64 + 63], true);
   cpu.registers[2] = 63;
   run(0xD122);
-  EXPECT_EQ(cpu.screen_buffer[31 * 64 + 63], 0);
-  EXPECT_EQ(cpu.screen_buffer[63], 0);
+  EXPECT_EQ(cpu.framebuffer()[31 * 64 + 63], 0);
+  EXPECT_EQ(cpu.framebuffer()[63], 0);
 }
 
 TEST_F(InstructionTest, Skip_if_key_pressed) {
   cpu.registers[1] = 0xE;
   run(0xE19E);
   EXPECT_EQ(cpu.program_counter, start + 2);
+  Emulator::Keypad keys{};
   keys[0xE] = true;
+  cpu.set_keys(keys);
   run(0xE19E);
   EXPECT_EQ(cpu.program_counter, start + 4);
 }
 
 TEST_F(InstructionTest, Skip_if_key_not_pressed) {
   cpu.registers[1] = 0xE;
+  Emulator::Keypad keys{};
   keys[0xE] = true;
+  cpu.set_keys(keys);
   run(0xE1A1);
   EXPECT_EQ(cpu.program_counter, start + 2);
   keys[0xE] = false;
+  cpu.set_keys(keys);
   run(0xE1A1);
   EXPECT_EQ(cpu.program_counter, start + 4);
 }
@@ -310,14 +292,25 @@ TEST_F(InstructionTest, Read_delay_timer) {
 
 TEST_F(InstructionTest, Wait_for_key) {
   cpu.registers[1] = 0xFF;
-  nextKey = 0;
-  run(0xF10A);
+  cpu.delay_timer = 2;
+  cpu.sound_timer = 1;
+  EXPECT_EQ(run(0xF10A), Emulator::StepResult::WaitingForKey);
+  EXPECT_EQ(cpu.program_counter, start);
+  EXPECT_EQ(cpu.registers[1], 0xFF);
+
+  cpu.tick_timers(1);
+  EXPECT_EQ(cpu.delay_timer, 1);
+  EXPECT_EQ(cpu.sound_timer, 0);
+
+  cpu.set_keys({}, 0);
+  EXPECT_EQ(cpu.step(), Emulator::StepResult::Executed);
+  EXPECT_EQ(cpu.program_counter, start + 2);
   EXPECT_EQ(cpu.registers[1], 0);
-  nextKey = 0xF;
-  run(0xF10A);
-  EXPECT_EQ(cpu.registers[1], 0xF);
-  nextKey.reset();
-  run(0xF10A);
+
+  Emulator::Keypad keys{};
+  keys[0xF] = true;
+  cpu.set_keys(keys);
+  EXPECT_EQ(run(0xF10A), Emulator::StepResult::Executed);
   EXPECT_EQ(cpu.registers[1], 0xF);
 }
 
